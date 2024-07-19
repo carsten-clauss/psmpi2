@@ -53,6 +53,14 @@ struct info_entry {
     char *value;
 };
 
+struct info_array_entry {
+    char *key;
+    char **values;
+    int num_values;
+};
+
+#define MPIR_INFO_INFOKEY_ARRAY_TYPE "mpix_info_array_type"
+
 /*S
   MPIR_Info - Structure of an MPIR info
 
@@ -89,6 +97,9 @@ struct MPIR_Info {
     MPIR_OBJECT_HEADER;         /* adds handle and ref_count fields */
     /* a dynamic array */
     struct info_entry *entries;
+    struct info_array_entry *array_entries;
+    int array_capacity;
+    int array_size;
     int capacity;
     int size;
 };
@@ -102,6 +113,10 @@ int MPIR_Info_alloc(MPIR_Info ** info_p_p);
 void MPIR_Info_setup_env(MPIR_Info * info_ptr);
 int MPIR_Info_push(MPIR_Info * info_ptr, const char *key, const char *val);
 const char *MPIR_Info_lookup(MPIR_Info * info_ptr, const char *key);
+const char *MPIR_Info_lookup_array(MPIR_Info * info_ptr, const char *key, int index);
+int MPIR_Info_push_array(MPIR_Info * info_ptr, int index, int count, const char *key,
+                         const char *val);
+int MPIR_Info_set_array(MPIR_Info * info_ptr, int index, const char *key, const char *val);
 
 /* utility to decode hex info value */
 int MPIR_Info_decode_hex(const char *str, void *buf, int len);

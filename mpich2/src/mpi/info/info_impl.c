@@ -29,6 +29,20 @@ const char *MPIR_Info_lookup(MPIR_Info * info_ptr, const char *key)
     return NULL;
 }
 
+const char *MPIR_Info_lookup_array(MPIR_Info * info_ptr, const char *key, int index)
+{
+    if (!info_ptr) {
+        return NULL;
+    }
+
+    for (int i = 0; i < info_ptr->array_size; i++) {
+        if (strncmp(info_ptr->array_entries[i].key, key, MPI_MAX_INFO_KEY) == 0) {
+            return info_ptr->array_entries[i].values[index];
+        }
+    }
+    return NULL;
+}
+
 /* All the MPIR_Info routines may be called before initialization or after finalization of MPI. */
 int MPIR_Info_delete_impl(MPIR_Info * info_ptr, const char *key)
 {
@@ -70,6 +84,81 @@ int MPIR_Info_dup_impl(MPIR_Info * info_ptr, MPIR_Info ** new_info_ptr)
 
     for (int i = 0; i < info_ptr->size; i++) {
         MPIR_Info_push(info_new, info_ptr->entries[i].key, info_ptr->entries[i].value);
+    }
+    for (int i = 0; i < info_ptr->array_size; i++) {
+        int num_values = info_ptr->array_entries[i].num_values;
+        MPIR_Info_push_array(info_new, 0, num_values, info_ptr->array_entries[i].key,
+                             info_ptr->array_entries[i].values[0]);
+        for (int j = 1; j < num_values; j++) {
+            MPIR_Info_set_array(info_new, j, info_ptr->array_entries[i].key,
+                                info_ptr->array_entries[i].values[j]);
+        }
+    }
+
+  fn_exit:
+    return mpi_errno;
+  fn_fail:
+    goto fn_exit;
+}
+
+int MPIR_Info_merge_from_array_impl(int count, MPIR_Info * array_of_info_ptrs[],
+                                    MPIR_Info ** new_info_ptr)
+{
+    int mpi_errno = MPI_SUCCESS;
+
+    MPIR_Info *info_new;
+    mpi_errno = MPIR_Info_alloc(&info_new);
+    MPIR_ERR_CHECK(mpi_errno);
+    *new_info_ptr = info_new;
+
+    int found = 0;
+
+    for (int i = 0; i < count; i++) {
+        if (!array_of_info_ptrs[i])
+            continue;
+
+        for (int j = 0; j < array_of_info_ptrs[i]->size; j++) {
+
+            for (int k = i + 1; k < count; k++) {
+                if (!array_of_info_ptrs[k])
+                    continue;
+
+                char *key = array_of_info_ptrs[i]->entries[j].key;
+                const char *value = MPIR_Info_lookup(array_of_info_ptrs[k], key);
+                if (value && strcmp(value, MPIR_INFO_INFOKEY_ARRAY_TYPE)) {
+                    if (!found) {
+                        MPIR_Info_push_array(info_new, k, count, key, value);
+                        found = 1;
+                    } else {
+                        MPIR_Info_set_array(info_new, k, key, value);
+                    }
+                }
+            }
+
+            if (found) {
+                MPIR_Info_set_array(info_new, i, array_of_info_ptrs[i]->entries[j].key,
+                                    array_of_info_ptrs[i]->entries[j].value);
+                found = 0;
+            }
+        }
+    }
+
+    for (int i = 0; i < count; i++) {
+        if (!array_of_info_ptrs[i])
+            continue;
+
+        for (int j = 0; j < array_of_info_ptrs[i]->size; j++) {
+            char *key = array_of_info_ptrs[i]->entries[j].key;
+            char *value = array_of_info_ptrs[i]->entries[j].value;
+
+            if (strcmp(value, MPIR_INFO_INFOKEY_ARRAY_TYPE)) {
+                if (!MPIR_Info_lookup_array(info_new, key, 0)) {
+                    MPIR_Info_push(info_new, key, value);
+                } else if (!MPIR_Info_lookup(info_new, key)) {
+                    MPIR_Info_push(info_new, key, MPIR_INFO_INFOKEY_ARRAY_TYPE);
+                }
+            }
+        }
     }
 
   fn_exit:
